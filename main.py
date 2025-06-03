@@ -1,7 +1,9 @@
 # main.py
+
 import os
 import json
 import sys
+import time
 
 # Importe les fonctions des modules créés
 from image_processing.ocr_utils import preprocess_image, extract_text_from_image, extract_text_from_pdf
@@ -13,6 +15,7 @@ if sys.stdout.encoding != 'utf-8':
 
 
 def process_file(file_path):
+    start_time = time.time()  # Enregistre le temps de départ
     extracted_text = ""
     if file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
         processed_image_path = preprocess_image(file_path)
@@ -33,6 +36,11 @@ def process_file(file_path):
 
     interpreted_data = interpret_text(extracted_text)
     print(f"Informations de dépense extraites : \n{interpreted_data}")
+
+    end_time = time.time()  # Enregistre le temps de fin
+    execution_time = end_time - start_time  # Calcule la durée
+    print(f"--- Temps d'exécution total : {execution_time:.2f} secondes ---")  # Affiche le temps formaté
+
     return interpreted_data
 
 

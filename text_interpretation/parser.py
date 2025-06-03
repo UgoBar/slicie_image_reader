@@ -91,10 +91,13 @@ def find_date(text):
 
 
 def find_hour(text):
+    """Recherche l'heure dans le texte (HH:mm, HHhMM, HH:mm:ss)."""
+
+    # Patterns pour l'heure
     hour_patterns = [
-        r'\b(\d{1,2}[h:]\d{2})\b',
-        r'\b(\d{1,2}[h])\b',
-        r'\b(\d{1,2}:\d{2}:\d{2})\b'
+        r'\b(\d{1,2}:\d{2}:\d{2})\b',  # HH:mm:ss (ajouté en premier pour la priorité)
+        r'\b(\d{1,2}[h:]\d{2})\b',     # HH:mm ou HHhMM
+        r'\b(\d{1,2}[h])\b',           # HHh
     ]
 
     for pattern in hour_patterns:
@@ -103,13 +106,15 @@ def find_hour(text):
             for hour_str in matches:
                 try:
                     hour_str_clean = hour_str.replace('h', ':')
-                    if len(hour_str_clean.split(':')) == 2:
-                        parsed_hour = datetime.strptime(hour_str_clean, '%H:%M')
-                    elif len(hour_str_clean.split(':')) == 3:
+                    # Vérifier le nombre de segments pour déterminer le format
+                    parts = hour_str_clean.split(':')
+                    if len(parts) == 3: # HH:mm:ss
                         parsed_hour = datetime.strptime(hour_str_clean, '%H:%M:%S')
-                    else:
-                        parsed_hour = datetime.strptime(hour_str_clean.split(':')[0], '%H')
-                    return parsed_hour.strftime('%H:%M')
+                    elif len(parts) == 2: # HH:mm
+                        parsed_hour = datetime.strptime(hour_str_clean, '%H:%M')
+                    else: # HHh (simple heure)
+                         parsed_hour = datetime.strptime(parts[0], '%H')
+                    return parsed_hour.strftime('%H:%M') # On garde le format HH:MM pour la sortie
                 except ValueError:
                     continue
     return None
