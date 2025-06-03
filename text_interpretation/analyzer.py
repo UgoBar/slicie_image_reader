@@ -183,13 +183,13 @@ def interpret_text(extracted_text):
     }
 
     # Extraction améliorée
-    result["amount"] = find_amount(extracted_text)
+    result["amount"] = find_amount(cleaned_text)
     result["category"], result["location_name"] = find_category_and_location(
-        extracted_text, result["amount"]
+        cleaned_text, result["amount"]
     )
 
     # Les fonctions date/heure restent identiques
-    result["date"] = find_date(extracted_text)
-    result["hour"] = find_hour(extracted_text)
+    result["date"] = find_date(cleaned_text)
+    result["hour"] = find_hour(cleaned_text)
 
     return json.dumps(result, indent=4)
