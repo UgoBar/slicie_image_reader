@@ -2,7 +2,6 @@
 import cv2
 import os
 import easyocr
-from PIL import Image
 from pdf2image import convert_from_path
 
 def preprocess_image(image_path):

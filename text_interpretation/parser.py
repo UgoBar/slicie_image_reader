@@ -1,4 +1,3 @@
-
 import re
 from datetime import datetime
 
@@ -10,30 +9,62 @@ def clean_text(text):
 
 
 def find_amount(text):
-    patterns = [
-        r'(?:total|net a payer|somme|ttc|total net|montant|montant)[\s:]*(\d{1,5}(?:[.,]\d{2})?)',
-        r'(\d{1,5}(?:[.,]\d{2}?))\s*(?:eur|euros|€)',
-        r'(\d{1,5}[.,]\d{2})',
-        r'(\d{1,5}\.\d{2})',
-        r'(\d{1,5},\d{2})',
+    """Version améliorée avec logique de fallback intelligente"""
+    clean_text_lower = text.lower()
+    candidates = []
+
+    # Patterns avec priorités
+    priority_patterns = [
+        # Priorité maximale : mots-clés explicites
+        (r'(?:total\s*a\s*payer|net\s*a\s*payer|montant\s*total)[\s:]*(\d{1,5}(?:[.,]\d{2})?)', 100, 'total_explicit'),
+        (r'(?:total|ttc)[\s:]*(\d{1,5}(?:[.,]\d{2})?)', 90, 'total'),
+        (r'(?:somme|montant)[\s:]*(\d{1,5}(?:[.,]\d{2})?)', 85, 'amount_keyword'),
+
+        # Priorité haute : format avec devise
+        (r'(\d{1,5}(?:[.,]\d{2}?))\s*(?:eur|euros|€)', 80, 'with_currency'),
+
+        # Priorité moyenne : montants décimaux
+        (r'(\d{1,5}[.,]\d{2})', 60, 'decimal'),
+
+        # Priorité basse : nombres entiers (fallback)
+        (r'(?<!\d)(\d{1,3})(?!\d)', 30, 'integer')
     ]
 
-    for pattern in patterns:
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        if matches:
-            amounts = []
-            for m in matches:
-                try:
-                    clean_m = m.replace(',', '.')
-                    amounts.append(float(clean_m))
-                except ValueError:
-                    pass
-            if amounts:
-                if any(k in text for k in ["total", "net a payer", "ttc"]):
-                    return max(amounts)
-                else:
-                    return max(amounts)
-    return None
+    for pattern, priority, pattern_type in priority_patterns:
+        matches = re.findall(pattern, clean_text_lower, re.IGNORECASE)
+        for match in matches:
+            try:
+                amount = float(match.replace(',', '.'))
+                if 0.1 <= amount <= 9999:  # Filtrage des montants réalistes
+                    candidates.append({
+                        'amount': amount,
+                        'priority': priority,
+                        'type': pattern_type,
+                        'original': match
+                    })
+            except ValueError:
+                continue
+
+    if not candidates:
+        return None
+
+    # Logique de sélection intelligente
+    candidates.sort(key=lambda x: x['priority'], reverse=True)
+
+    # Si on a des candidats haute priorité, on les privilégie
+    high_priority = [c for c in candidates if c['priority'] >= 80]
+    if high_priority:
+        # Parmi les haute priorité, on prend le plus élevé (souvent le total)
+        return max(high_priority, key=lambda x: x['amount'])['amount']
+
+    # Sinon, logique contextuelle
+    medium_priority = [c for c in candidates if c['priority'] >= 60]
+    if medium_priority:
+        # Pour les décimaux, on prend le plus élevé (probablement le total)
+        return max(medium_priority, key=lambda x: x['amount'])['amount']
+
+    # Fallback : le montant le plus élevé parmi les restants
+    return max(candidates, key=lambda x: x['amount'])['amount']
 
 
 def find_date(text):
