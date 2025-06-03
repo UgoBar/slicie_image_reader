@@ -1,3 +1,4 @@
+# text_interpretation/constants.py
 
 # --- Configuration des catégories et mots clés ---
 CATEGORIES = {

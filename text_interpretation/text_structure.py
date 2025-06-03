@@ -1,4 +1,5 @@
 # text_interpretation/text_structure.py
+
 import re
 from typing import List, Dict, Tuple
 

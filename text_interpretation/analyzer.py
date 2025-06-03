@@ -1,4 +1,5 @@
-# text_interpretation/analyzer.py (version améliorée)
+# text_interpretation/analyzer.py
+
 import re
 import json
 from .constants import CATEGORIES, KNOWN_COMMERCES

@@ -7,7 +7,7 @@ import sys
 from image_processing.ocr_utils import preprocess_image, extract_text_from_image, extract_text_from_pdf
 from text_interpretation.analyzer import interpret_text, debug_structure_analysis
 
-# S'assurer de l'encodage pour la console si besoin, comme discuté précédemment
+# S'assurer de l'encodage pour la console si besoin
 if sys.stdout.encoding != 'utf-8':
     sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
 
