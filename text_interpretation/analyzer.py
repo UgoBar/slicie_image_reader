@@ -1,8 +1,9 @@
+# text_interpretation/analyzer.py (version améliorée)
 import re
 import json
-from constants import CATEGORIES, KNOWN_COMMERCES
-from parser import clean_text, find_amount, find_date, find_hour
-
+from .constants import CATEGORIES, KNOWN_COMMERCES
+from .parser import clean_text, find_amount, find_date, find_hour
+from .text_structure import extract_location_name_structured, reconstruct_ticket_structure
 
 def calculate_name_confidence(name, category):
     """Calcule un score de confiance pour un nom de commerce"""
@@ -34,82 +35,95 @@ def calculate_name_confidence(name, category):
     return confidence
 
 
-def extract_location_name_improved(text, detected_category="Autre"):
-    """Extraction améliorée du nom du commerce"""
-    lines = text.strip().split('\n')
-    location_candidates = []
+def extract_contextual_info_from_structure(structure):
+    """
+    Extrait des informations contextuelles de la structure du ticket
+    """
+    context_info = {
+        'has_multiple_items': len([line for line in structure['body'] if line['type'] == 'item']) > 1,
+        'has_alcohol_keywords': False,
+        'has_food_keywords': False,
+        'payment_method': None,
+        'location_indicators': []
+    }
 
-    # 1. Recherche dans les enseignes connues (priorité absolue)
-    clean_text_lower = clean_text(text)
+    # Analyser tout le contenu pour des indices contextuels
+    all_text = ' '.join([line['text'] for section in structure.values() for line in section])
+    all_text_lower = all_text.lower()
 
+    # Détection d'indices alimentaires
+    food_keywords = ['pain', 'sandwich', 'menu', 'plat', 'boisson', 'eau', 'cafe', 'the']
+    context_info['has_food_keywords'] = any(keyword in all_text_lower for keyword in food_keywords)
+
+    # Détection d'alcool
+    alcohol_keywords = ['biere', 'vin', 'alcool', 'whisky', 'vodka', 'cocktail']
+    context_info['has_alcohol_keywords'] = any(keyword in all_text_lower for keyword in alcohol_keywords)
+
+    # Méthode de paiement
+    payment_keywords = {'carte': 'card', 'espece': 'cash', 'cheque': 'check', 'cb': 'card'}
+    for keyword, method in payment_keywords.items():
+        if keyword in all_text_lower:
+            context_info['payment_method'] = method
+            break
+
+    return context_info
+
+
+def enhanced_categorization(text, amount=None, structure=None):
+    """
+    Catégorisation améliorée utilisant la structure et le contexte
+    """
+    cleaned_text = clean_text(text)
+    detected_category = "Autre"
+
+    # 1. Vérifier les enseignes connues (priorité absolue)
     for known_name, category in KNOWN_COMMERCES.items():
-        if known_name in clean_text_lower:
-            return known_name.title(), category
+        if known_name in cleaned_text:
+            return category
 
-    # 2. Extraction du nom en début de ticket (lignes 1-3)
-    for i, line in enumerate(lines[:3]):
-        line = line.strip()
-        if not line:
-            continue
+    # 2. Analyse contextuelle si structure disponible
+    if structure:
+        context = extract_contextual_info_from_structure(structure)
 
-        # Nettoyer la ligne
-        clean_line = re.sub(r'[^\w\s-]', '', line)
-        words = clean_line.split()
+        # Logique contextuelle avancée
+        if context['has_alcohol_keywords']:
+            detected_category = "Bar"
+        elif context['has_food_keywords']:
+            if amount and amount > 30:
+                detected_category = "Courses"
+            elif context['has_multiple_items']:
+                detected_category = "Restaurant"
+            else:
+                detected_category = "Restaurant"
 
-        # Filtrer les mots parasites
-        filtered_words = []
-        skip_words = {'ticket', 'caisse', 'facture', 'recu', 'tva', 'tel', 'fax',
-                      'adresse', 'siret', 'rcs', 'sarl', 'sas', 'eurl', 'www', 'email'}
+    # 3. Scoring par mots-clés avec pondération (méthode existante)
+    category_scores = {}
+    for cat, keywords in CATEGORIES.items():
+        score = 0
+        for keyword in keywords:
+            if keyword in cleaned_text:
+                # Pondération selon la position dans la structure
+                base_weight = 1
+                if structure:
+                    # Bonus si le mot-clé apparaît dans le header (nom du commerce)
+                    header_text = ' '.join([line['text'] for line in structure['header']]).lower()
+                    if keyword in header_text:
+                        base_weight = 3
 
-        for word in words:
-            if (len(word) >= 3 and
-                    word.lower() not in skip_words and
-                    not word.isdigit() and
-                    not re.match(r'^\d+[a-z]*$', word.lower())):
-                filtered_words.append(word)
+                score += base_weight
 
-        if filtered_words:
-            # Prendre les 1-2 premiers mots significatifs
-            candidate_name = ' '.join(filtered_words[:2])
-            location_candidates.append({
-                'name': candidate_name,
-                'line_position': i,
-                'confidence': calculate_name_confidence(candidate_name, detected_category)
-            })
+        if score > 0:
+            category_scores[cat] = score
 
-    # 3. Recherche de noms avec majuscules dans tout le texte
-    capitalized_words = re.findall(r'\b[A-Z][A-Za-z]{2,}\b', text)
-    for word in capitalized_words[:5]:  # Limiter aux 5 premiers
-        if (word.lower() not in ['tva', 'total', 'merci', 'ticket', 'caisse'] and
-                len(word) >= 3):
-            location_candidates.append({
-                'name': word,
-                'line_position': 10,  # Moins prioritaire
-                'confidence': calculate_name_confidence(word, detected_category)
-            })
+    # Prendre la meilleure catégorie si score significatif
+    if category_scores and max(category_scores.values()) > 1:
+        detected_category = max(category_scores, key=category_scores.get)
 
-    # 4. Sélection du meilleur candidat
-    if location_candidates:
-        # Trier par confiance puis par position
-        location_candidates.sort(key=lambda x: (x['confidence'], -x['line_position']), reverse=True)
-        return location_candidates[0]['name'], detected_category
+    # 4. Heuristiques de fallback basées sur le montant
+    if detected_category == "Autre" and amount is not None:
+        detected_category = categorize_by_amount_heuristic(amount, cleaned_text)
 
-    return "Inconnu", detected_category
-
-
-def calculate_keyword_weight(keyword, text):
-    """Calcule le poids d'un mot-clé selon son contexte"""
-    base_weight = 1
-
-    # Bonus si le mot-clé apparaît plusieurs fois
-    count = text.count(keyword)
-    weight = base_weight * count
-
-    # Bonus selon la longueur du mot-clé (plus spécifique = plus de poids)
-    if len(keyword) > 8:
-        weight *= 1.5
-
-    return weight
+    return detected_category
 
 
 def categorize_by_amount_heuristic(amount, text):
@@ -137,44 +151,24 @@ def categorize_by_amount_heuristic(amount, text):
         return "Courses" if food_indicators else "Shopping"
 
 
-def find_category_and_location(text, amount=None):
-    """Version améliorée de la détection catégorie + lieu"""
-    detected_category = "Autre"
-    cleaned_text = clean_text(text)
+def find_category_and_location_enhanced(text, amount=None):
+    """
+    Version améliorée utilisant l'analyse structurelle
+    """
+    # Reconstituer la structure du ticket
+    structure = reconstruct_ticket_structure(text)
 
-    # 1. Vérifier les enseignes connues (priorité absolue)
-    for known_name, category in KNOWN_COMMERCES.items():
-        if known_name in cleaned_text:
-            location_name = known_name.title()
-            return category, location_name
+    # Catégorisation améliorée
+    detected_category = enhanced_categorization(text, amount, structure)
 
-    # 2. Scoring par mots-clés avec pondération
-    category_scores = {}
-    for cat, keywords in CATEGORIES.items():
-        score = 0
-        for keyword in keywords:
-            if keyword in cleaned_text:
-                # Pondération selon la position et le contexte
-                score += calculate_keyword_weight(keyword, cleaned_text)
-        if score > 0:
-            category_scores[cat] = score
+    # Extraction du nom du lieu avec l'analyse structurelle
+    location_name, final_category = extract_location_name_structured(text, detected_category)
 
-    # Sélection de la meilleure catégorie
-    if category_scores:
-        detected_category = max(category_scores, key=category_scores.get)
-
-    # 3. Extraction du nom du lieu
-    location_name, final_category = extract_location_name_improved(text, detected_category)
-
-    # 4. Heuristiques de fallback basées sur le montant
-    if detected_category == "Autre" and amount is not None:
-        detected_category = categorize_by_amount_heuristic(amount, cleaned_text)
-
-    return detected_category, location_name
+    return final_category, location_name
 
 
 def interpret_text(extracted_text):
-    """Version améliorée de l'interprétation"""
+    """Version améliorée de l'interprétation avec analyse structurelle"""
     cleaned_text = clean_text(extracted_text)
 
     result = {
@@ -182,14 +176,34 @@ def interpret_text(extracted_text):
         "category": "Autre", "date": None, "hour": None, "country": "france"
     }
 
-    # Extraction améliorée
-    result["amount"] = find_amount(cleaned_text)
-    result["category"], result["location_name"] = find_category_and_location(
-        cleaned_text, result["amount"]
+    # Extraction du montant
+    result["amount"] = find_amount(extracted_text)
+
+    # Catégorisation et extraction du lieu améliorées
+    result["category"], result["location_name"] = find_category_and_location_enhanced(
+        extracted_text, result["amount"]
     )
 
-    # Les fonctions date/heure restent identiques
-    result["date"] = find_date(cleaned_text)
-    result["hour"] = find_hour(cleaned_text)
+    # Extraction date/heure (inchangées)
+    result["date"] = find_date(extracted_text)
+    result["hour"] = find_hour(extracted_text)
 
     return json.dumps(result, indent=4)
+
+
+def debug_structure_analysis(extracted_text):
+    """
+    Fonction de debug pour visualiser l'analyse structurelle
+    """
+    structure = reconstruct_ticket_structure(extracted_text)
+
+    print("=== ANALYSE STRUCTURELLE ===")
+    for section_name, lines in structure.items():
+        if lines:
+            print(f"\n{section_name.upper()}:")
+            for line_info in lines:
+                print(f"  - {line_info['text']} (type: {line_info['type']})")
+
+    # Test de l'extraction du nom
+    category, location = find_category_and_location_enhanced(extracted_text)
+    print(f"\nRÉSULTAT: {location} - {category}")

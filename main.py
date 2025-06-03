@@ -5,7 +5,7 @@ import sys
 
 # Importe les fonctions des modules créés
 from image_processing.ocr_utils import preprocess_image, extract_text_from_image, extract_text_from_pdf
-from text_interpretation.analyzer import interpret_text
+from text_interpretation.analyzer import interpret_text, debug_structure_analysis
 
 # S'assurer de l'encodage pour la console si besoin, comme discuté précédemment
 if sys.stdout.encoding != 'utf-8':
@@ -29,6 +29,7 @@ def process_file(file_path):
         }, indent=4)
 
     print(f"Texte extrait (brut) : \n{extracted_text}\n")
+    debug_structure_analysis(extracted_text)  # Debug de la structure
 
     interpreted_data = interpret_text(extracted_text)
     print(f"Informations de dépense extraites : \n{interpreted_data}")
