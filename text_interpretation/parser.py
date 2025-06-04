@@ -3,6 +3,7 @@
 import re
 from datetime import datetime
 
+
 def clean_text(text):
     text = text.lower()
     text = re.sub(r'[^a-z0-9\s,.-_€]', '', text)
@@ -91,30 +92,75 @@ def find_date(text):
 
 
 def find_hour(text):
-    """Recherche l'heure dans le texte (HH:mm, HHhMM, HH:mm:ss)."""
+    """Recherche l'heure dans le texte avec gestion des erreurs OCR variées."""
 
-    # Patterns pour l'heure
+    # Patterns pour l'heure (ordre de priorité décroissante)
     hour_patterns = [
-        r'\b(\d{1,2}:\d{2}:\d{2})\b',  # HH:mm:ss (ajouté en premier pour la priorité)
-        r'\b(\d{1,2}[h:]\d{2})\b',     # HH:mm ou HHhMM
-        r'\b(\d{1,2}[h])\b',           # HHh
+        # Formats classiques (priorité haute)
+        (r'\b(\d{1,2}:\d{2}:\d{2})\b', 'classic_hms'),
+        (r'\b(\d{1,2}[h:]\d{2})\b', 'classic_hm'),
+        (r'\b(\d{1,2}[h])\b', 'classic_h'),
+
+        # Formats avec contexte temporel (emails, factures)
+        (r'(?:le|du|à|at|a)\s+.*?(\d{1,2}[h:]\d{2})', 'contextual'),
+
+        # Formats dégradés par OCR (tickets TPE, scans de mauvaise qualité)
+        (r'\b(?:LE|le)\s+\d{2}/\d{2}/\d{2,4}\s+(?:A|à)\s+(\d{1,2})\s+(\d{2})[*\s]*(\d{2})?\b', 'banking_context'),
+        (r'\b(?:A|à)\s+(\d{1,2})\s+(\d{2})[*\s]*(\d{2})?\b', 'degraded_a'),
+        (r'\b(\d{1,2})\s+(\d{2})[*\s]+(\d{2})\b', 'degraded_spaced'),
+        (r'\b(\d{1,2})\s*[*•·]\s*(\d{2})\b', 'degraded_symbols'),
+        (r'\b(\d{1,2})\s{2,}(\d{2})\b', 'multi_space'),
+
+        # Formats emails/digitaux
+        (r'(\d{1,2})h(\d{2})', 'email_format'),
     ]
 
-    for pattern in hour_patterns:
-        matches = re.findall(pattern, text)
+    for pattern, pattern_type in hour_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
         if matches:
-            for hour_str in matches:
+            for match in matches:
                 try:
-                    hour_str_clean = hour_str.replace('h', ':')
-                    # Vérifier le nombre de segments pour déterminer le format
-                    parts = hour_str_clean.split(':')
-                    if len(parts) == 3: # HH:mm:ss
-                        parsed_hour = datetime.strptime(hour_str_clean, '%H:%M:%S')
-                    elif len(parts) == 2: # HH:mm
-                        parsed_hour = datetime.strptime(hour_str_clean, '%H:%M')
-                    else: # HHh (simple heure)
-                         parsed_hour = datetime.strptime(parts[0], '%H')
-                    return parsed_hour.strftime('%H:%M') # On garde le format HH:MM pour la sortie
-                except ValueError:
+                    if pattern_type in ['classic_hms', 'classic_hm', 'classic_h']:
+                        hour_str = match if isinstance(match, str) else match[0]
+                        hour_str_clean = hour_str.replace('h', ':')
+                        parts = hour_str_clean.split(':')
+
+                        if len(parts) == 3:  # HH:mm:ss
+                            parsed_hour = datetime.strptime(hour_str_clean, '%H:%M:%S')
+                        elif len(parts) == 2:  # HH:mm
+                            parsed_hour = datetime.strptime(hour_str_clean, '%H:%M')
+                        else:  # HHh
+                            parsed_hour = datetime.strptime(parts[0], '%H')
+
+                        return parsed_hour.strftime('%H:%M')
+
+                    elif pattern_type == 'contextual':
+                        # Extraction depuis contexte ("le 15/03 à 14h30")
+                        hour_str = match.replace('h', ':')
+                        if ':' in hour_str:
+                            parsed_hour = datetime.strptime(hour_str, '%H:%M')
+                            return parsed_hour.strftime('%H:%M')
+
+                    else:  # Formats dégradés (tuples)
+                        if isinstance(match, tuple):
+                            if len(match) == 3 and match[2]:  # Heure, minute, seconde
+                                hour, minute, second = match
+                            elif len(match) >= 2:  # Heure, minute
+                                hour, minute = match[0], match[1]
+                                second = "00"
+                            else:
+                                continue
+                        else:
+                            continue
+
+                        # Validation des valeurs
+                        hour_int = int(hour)
+                        minute_int = int(minute)
+
+                        if 0 <= hour_int <= 23 and 0 <= minute_int <= 59:
+                            return f"{hour_int:02d}:{minute_int:02d}"
+
+                except (ValueError, IndexError, AttributeError):
                     continue
+
     return None
