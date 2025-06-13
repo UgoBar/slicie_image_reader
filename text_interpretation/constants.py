@@ -36,7 +36,7 @@ CATEGORIES = {
         "hygiène", "produits ménagers", "produits d'entretien", "produits de beauté",
         "lessive", "liquide vaisselle", "papier toilette", "savon", "shampoing",
         "dentifrice", "mouchoirs", "produits pour bébé", "produits pour animaux",
-        "droguerie", "parapharmacie", "cosmétiques"
+        "droguerie", "parapharmacie", "cosmétiques", "coquillettes", "pates"
     ],
     "Culture": [
         "culture", "musée", "exposition", "galerie d'art", "bibliothèque", "médiathèque",

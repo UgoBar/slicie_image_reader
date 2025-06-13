@@ -1,4 +1,6 @@
 # main.py
+# Lancer l'environnement : source myenv/Scripts/activate
+# image docker : docker pull paddlepaddle/paddle:3.0.0-gpu-cuda12.6-cudnn9.5-trt10.5
 
 import os
 import json
@@ -45,8 +47,9 @@ def process_file(file_path):
 
 
 # --- Chemin vers le fichier à traiter ---
-# file_path = 'data/facture.pdf'
-file_path = 'data/ticket.JPG'
+# file_path = 'data/facture.pdf' -- TODO - ajuster le script pour les factures
+# file_path = 'data/ticket.JPG'
+file_path = 'data/ticket_coquillettes.jpg'
 
 if __name__ == "__main__":
     process_file(file_path)
